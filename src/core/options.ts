@@ -2,7 +2,7 @@
  * Formatter configuration options.
  */
 export interface FormatterOptions {
-    /** Number of spaces per indentation level (default: 3) */
+    /** Number of spaces per indentation level. When used via VS Code, editor.tabSize takes priority (default: 3) */
     indentationSpaces: number;
     /** Insert blank line after EXIT statements (default: true) */
     addEmptyLineAfterExit: boolean;
@@ -12,6 +12,8 @@ export interface FormatterOptions {
     alignPicClauses: boolean;
     /** Source format: auto-detect, fixed-form, or free-form (default: "auto") */
     sourceFormat: "auto" | "fixed" | "free";
+    /** Normalize COBOL reserved word casing: "upper", "lower", or "preserve" (default: "preserve") */
+    keywordCase: "upper" | "lower" | "preserve";
 }
 
 export const DEFAULT_OPTIONS: FormatterOptions = {
@@ -20,6 +22,7 @@ export const DEFAULT_OPTIONS: FormatterOptions = {
     evaluateIndentWhen: true,
     alignPicClauses: true,
     sourceFormat: "auto",
+    keywordCase: "preserve",
 };
 
 export function resolveOptions(partial: Partial<FormatterOptions>): FormatterOptions {

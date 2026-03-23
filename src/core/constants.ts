@@ -465,3 +465,79 @@ export const LOGICAL_OPERATORS = [
     "OR",
     "NOT",
 ] as const;
+
+// ─── Miscellaneous single reserved words ─────────────────────────────────────
+
+/** Individual reserved words not covered by the arrays above. */
+const MISC_RESERVED_WORDS = [
+    // Common clause connectives
+    "TO", "FROM", "BY", "INTO", "GIVING", "USING", "RETURNING",
+    "OF", "IN", "ON", "AT", "IS", "ARE", "THAN", "THAN OR EQUAL",
+    "THROUGH", "THRU",
+
+    // Data description
+    "FILLER", "SECTION", "DIVISION",
+    "LENGTH", "SIZE", "DEPENDING", "INDEXED",
+    "ASCENDING", "DESCENDING", "KEY",
+    "LEADING", "TRAILING", "SEPARATE", "CHARACTER",
+    "LEFT", "RIGHT",
+    "BEFORE", "AFTER", "INITIAL",
+    "STANDARD", "STANDARD-1", "STANDARD-2",
+
+    // Procedure
+    "THEN", "END", "NEXT", "SENTENCE",
+    "TRUE", "FALSE", "OTHER",
+    "TEST", "VARYING", "UNTIL", "TIMES",
+    "PROCEDURE", "PROGRAM", "CLASS",
+    "CORRESPONDING", "CORR",
+
+    // I/O
+    "FILE", "RECORD", "RECORDS", "LINE", "LINES",
+    "ADVANCING", "PAGE", "UPON",
+    "POSITION", "STATUS", "MODE",
+
+    // Boolean / condition
+    "WITH", "WITHOUT", "NO",
+    "EXCEPTION", "OVERFLOW", "ERROR",
+    "SEQUENTIAL", "RANDOM", "DYNAMIC",
+] as const;
+
+// ─── Complete reserved word lookup set ───────────────────────────────────────
+
+/**
+ * Set of all known COBOL reserved words in UPPERCASE, for O(1) lookup.
+ * Used by the keyword case normalizer to distinguish reserved words from
+ * user-defined names (data names, paragraph names).
+ *
+ * Multi-word entries (e.g. "WORKING-STORAGE SECTION", "GREATER THAN") are
+ * expanded so each individual word is also registered.
+ */
+export const COBOL_RESERVED_WORDS: Set<string> = (() => {
+    const all: string[] = [
+        ...AREA_A_KEYWORDS,
+        ...PROCEDURE_VERBS,
+        ...SCOPE_TERMINATORS,
+        ...DATA_CLAUSE_KEYWORDS,
+        ...FIGURATIVE_CONSTANTS,
+        ...PERFORM_MODIFIERS,
+        ...RELATION_OPERATORS,
+        ...LOGICAL_OPERATORS,
+        ...OPEN_MODES,
+        ...USAGE_VALUES,
+        ...PIC_KEYWORDS,
+        ...INDENT_ELSE_KEYWORDS,
+        ...INDENT_SUB_CLAUSES,
+        ...MISC_RESERVED_WORDS,
+    ];
+
+    const set = new Set<string>();
+    for (const entry of all) {
+        // Register the full phrase and each individual word within it
+        const upper = entry.toUpperCase();
+        set.add(upper);
+        for (const word of upper.split(/\s+/)) {
+            if (word) set.add(word);
+        }
+    }
+    return set;
+})();
