@@ -6,7 +6,7 @@
         "url": "https://github.com/Tawga/kopo-formatter"
     },
     "description": "Visual Studio Code extension to format Cobol files",
-    "version": "0.0.1",
+    "version": "0.1.0",
     "engines": {
         "vscode": "^1.102.0"
     },
@@ -17,12 +17,12 @@
         "onLanguage:COBOL",
         "onLanguage:cobol"
     ],
-    "main": "./extension.js",
+    "main": "./dist/extension.js",
     "contributes": {
         "commands": [
             {
                 "command": "kopo-formatter.formatDocument",
-                "title": "Hello Cobol Document"
+                "title": "Format COBOL Document"
             }
         ],
         "configuration": {
@@ -47,6 +47,12 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Align PIC and VALUE clauses in the Data Division to a consistent column"
+                },
+                "kopo-formatter.sourceFormat": {
+                    "type": "string",
+                    "default": "auto",
+                    "enum": ["auto", "fixed", "free"],
+                    "description": "COBOL source format: auto-detect, fixed-form, or free-form"
                 }
             }
         },
@@ -59,20 +65,19 @@
         ]
     },
     "scripts": {
-        "lint": "eslint .",
-        "pretest": "npm run lint",
-        "test": "vscode-test",
-        "build": "vsce package --out build"
+        "compile": "tsc -p .",
+        "bundle": "node esbuild.mjs",
+        "watch": "tsc -w -p .",
+        "build": "npm run compile && npm run bundle",
+        "package": "npm run build && vsce package --out build",
+        "test": "vitest run",
+        "test:watch": "vitest"
     },
     "devDependencies": {
-        "@types/mocha": "^10.0.10",
         "@types/node": "20.x",
         "@types/vscode": "^1.102.0",
-        "@vscode/test-cli": "^0.0.11",
-        "@vscode/test-electron": "^2.5.2",
-        "eslint": "^9.25.1"
-    },
-    "dependencies": {
-        "iconv-lite": "^0.6.3"
+        "esbuild": "^0.25.0",
+        "typescript": "^5.7.0",
+        "vitest": "^3.0.0"
     }
 }
