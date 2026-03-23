@@ -18,6 +18,12 @@ import {
 } from "../types.js";
 import { buildLine } from "../layout.js";
 import { printTrivia } from "./dataPrinter.js";
+import { applyCase } from "../caseNormalizer.js";
+
+/** Shorthand: apply case normalization to a content string. */
+function c(text: string, options: FormatterOptions): string {
+    return applyCase(text, options);
+}
 
 /**
  * Print a procedure section.
@@ -30,7 +36,7 @@ export function printProcedureSection(
     const lines: string[] = [];
     lines.push(...printTrivia(section.leadingTrivia, format));
     // Section header goes in Area A
-    lines.push(buildLine(format, { areaA: true, content: section.headerText }));
+    lines.push(buildLine(format, { areaA: true, content: c(section.headerText, options) }));
 
     for (const para of section.paragraphs) {
         lines.push(...printParagraph(para, options, format));
@@ -99,7 +105,7 @@ function printSimpleStatement(
     const lines: string[] = [];
     lines.push(...printTrivia(stmt.leadingTrivia, format));
     const indent = depth * options.indentationSpaces;
-    lines.push(buildLine(format, { areaA: false, indent, content: stmt.rawText }));
+    lines.push(buildLine(format, { areaA: false, indent, content: c(stmt.rawText, options) }));
 
     // Add empty line after EXIT if option enabled
     if (options.addEmptyLineAfterExit && stmt.verb === "EXIT" && stmt.rawText.trim().toUpperCase().endsWith("EXIT.")) {
@@ -119,7 +125,7 @@ function printIfStatement(
     const indent = depth * options.indentationSpaces;
 
     lines.push(...printTrivia(stmt.leadingTrivia, format));
-    lines.push(buildLine(format, { areaA: false, indent, content: stmt.conditionText }));
+    lines.push(buildLine(format, { areaA: false, indent, content: c(stmt.conditionText, options) }));
 
     // Then body at depth + 1
     for (const child of stmt.thenBody) {
@@ -128,14 +134,14 @@ function printIfStatement(
 
     // Else clause
     if (stmt.elseBody.length > 0) {
-        lines.push(buildLine(format, { areaA: false, indent, content: "ELSE" }));
+        lines.push(buildLine(format, { areaA: false, indent, content: c("ELSE", options) }));
         for (const child of stmt.elseBody) {
             lines.push(...printStatement(child, depth + 1, options, format));
         }
     }
 
     // END-IF
-    lines.push(buildLine(format, { areaA: false, indent, content: "END-IF" }));
+    lines.push(buildLine(format, { areaA: false, indent, content: c("END-IF", options) }));
 
     return lines;
 }
@@ -150,7 +156,7 @@ function printEvaluateStatement(
     const indent = depth * options.indentationSpaces;
 
     lines.push(...printTrivia(stmt.leadingTrivia, format));
-    lines.push(buildLine(format, { areaA: false, indent, content: stmt.subjectText }));
+    lines.push(buildLine(format, { areaA: false, indent, content: c(stmt.subjectText, options) }));
 
     for (const branch of stmt.whenBranches) {
         lines.push(...printTrivia(branch.leadingTrivia, format));
@@ -158,7 +164,7 @@ function printEvaluateStatement(
         // WHEN clause indent depends on evaluateIndentWhen option
         const whenDepth = options.evaluateIndentWhen ? depth + 1 : depth;
         const whenIndent = whenDepth * options.indentationSpaces;
-        lines.push(buildLine(format, { areaA: false, indent: whenIndent, content: branch.conditionText }));
+        lines.push(buildLine(format, { areaA: false, indent: whenIndent, content: c(branch.conditionText, options) }));
 
         // WHEN body at whenDepth + 1
         for (const child of branch.body) {
@@ -167,7 +173,7 @@ function printEvaluateStatement(
     }
 
     // END-EVALUATE
-    lines.push(buildLine(format, { areaA: false, indent, content: "END-EVALUATE" }));
+    lines.push(buildLine(format, { areaA: false, indent, content: c("END-EVALUATE", options) }));
 
     return lines;
 }
@@ -182,7 +188,7 @@ function printPerformBlock(
     const indent = depth * options.indentationSpaces;
 
     lines.push(...printTrivia(stmt.leadingTrivia, format));
-    lines.push(buildLine(format, { areaA: false, indent, content: stmt.clauseText }));
+    lines.push(buildLine(format, { areaA: false, indent, content: c(stmt.clauseText, options) }));
 
     // Body at depth + 1
     for (const child of stmt.body) {
@@ -190,7 +196,7 @@ function printPerformBlock(
     }
 
     // END-PERFORM
-    lines.push(buildLine(format, { areaA: false, indent, content: "END-PERFORM" }));
+    lines.push(buildLine(format, { areaA: false, indent, content: c("END-PERFORM", options) }));
 
     return lines;
 }
@@ -205,38 +211,38 @@ function printReadBlock(
     const indent = depth * options.indentationSpaces;
 
     lines.push(...printTrivia(stmt.leadingTrivia, format));
-    lines.push(buildLine(format, { areaA: false, indent, content: stmt.headerText }));
+    lines.push(buildLine(format, { areaA: false, indent, content: c(stmt.headerText, options) }));
 
     if (stmt.atEndBody.length > 0) {
-        lines.push(buildLine(format, { areaA: false, indent: (depth + 1) * options.indentationSpaces, content: "AT END" }));
+        lines.push(buildLine(format, { areaA: false, indent: (depth + 1) * options.indentationSpaces, content: c("AT END", options) }));
         for (const child of stmt.atEndBody) {
             lines.push(...printStatement(child, depth + 2, options, format));
         }
     }
 
     if (stmt.notAtEndBody.length > 0) {
-        lines.push(buildLine(format, { areaA: false, indent, content: "NOT AT END" }));
+        lines.push(buildLine(format, { areaA: false, indent, content: c("NOT AT END", options) }));
         for (const child of stmt.notAtEndBody) {
             lines.push(...printStatement(child, depth + 1, options, format));
         }
     }
 
     if (stmt.invalidKeyBody.length > 0) {
-        lines.push(buildLine(format, { areaA: false, indent: (depth + 1) * options.indentationSpaces, content: "INVALID KEY" }));
+        lines.push(buildLine(format, { areaA: false, indent: (depth + 1) * options.indentationSpaces, content: c("INVALID KEY", options) }));
         for (const child of stmt.invalidKeyBody) {
             lines.push(...printStatement(child, depth + 2, options, format));
         }
     }
 
     if (stmt.notInvalidKeyBody.length > 0) {
-        lines.push(buildLine(format, { areaA: false, indent, content: "NOT INVALID KEY" }));
+        lines.push(buildLine(format, { areaA: false, indent, content: c("NOT INVALID KEY", options) }));
         for (const child of stmt.notInvalidKeyBody) {
             lines.push(...printStatement(child, depth + 1, options, format));
         }
     }
 
     // END-READ
-    lines.push(buildLine(format, { areaA: false, indent, content: "END-READ" }));
+    lines.push(buildLine(format, { areaA: false, indent, content: c("END-READ", options) }));
 
     return lines;
 }
@@ -250,6 +256,6 @@ function printUnparsedStatement(
     const lines: string[] = [];
     lines.push(...printTrivia(stmt.leadingTrivia, format));
     const indent = depth * options.indentationSpaces;
-    lines.push(buildLine(format, { areaA: false, indent, content: stmt.rawText }));
+    lines.push(buildLine(format, { areaA: false, indent, content: c(stmt.rawText, options) }));
     return lines;
 }

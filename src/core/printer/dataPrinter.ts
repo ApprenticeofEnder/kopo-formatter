@@ -13,6 +13,7 @@ import {
 } from "../types.js";
 import { AREA_A_START } from "../constants.js";
 import { buildLine } from "../layout.js";
+import { applyCase } from "../caseNormalizer.js";
 
 export interface AlignmentMap {
     /** Maps indent depth (in spaces) to the column where PIC/VALUE should start */
@@ -107,12 +108,12 @@ export function printDataEntry(
     const aligned = tryAlignEntry(entry, indent, depth, options, alignment, sectionName);
 
     if (aligned) {
-        lines.push(buildLine(format, { areaA: true, indent: 0, content: aligned }));
+        lines.push(buildLine(format, { areaA: true, indent: 0, content: applyCase(aligned, options) }));
     } else {
         // No alignment — normalize spacing
         const normalized = normalizeDataLine(entry);
         const content = " ".repeat(indent) + normalized;
-        lines.push(buildLine(format, { areaA: true, indent: 0, content }));
+        lines.push(buildLine(format, { areaA: true, indent: 0, content: applyCase(content, options) }));
     }
 
     // Print children
@@ -187,7 +188,7 @@ export function printFdEntry(
 ): string[] {
     const lines: string[] = [];
     lines.push(...printTrivia(fd.leadingTrivia, format));
-    lines.push(buildLine(format, { areaA: true, content: fd.rawText }));
+    lines.push(buildLine(format, { areaA: true, content: applyCase(fd.rawText, options) }));
 
     for (const record of fd.records) {
         lines.push(...printDataEntry(record, 0, options, format, alignment, "FILE"));
@@ -208,7 +209,7 @@ export function printCopyStatement(
     const lines: string[] = [];
     lines.push(...printTrivia(copy.leadingTrivia, format));
     const indent = depth * options.indentationSpaces;
-    lines.push(buildLine(format, { areaA: false, indent, content: copy.rawText }));
+    lines.push(buildLine(format, { areaA: false, indent, content: applyCase(copy.rawText, options) }));
     return lines;
 }
 
@@ -223,7 +224,7 @@ export function printDataSection(
 ): string[] {
     const lines: string[] = [];
     lines.push(...printTrivia(section.leadingTrivia, format));
-    lines.push(buildLine(format, { areaA: true, content: section.headerText }));
+    lines.push(buildLine(format, { areaA: true, content: applyCase(section.headerText, options) }));
 
     const sectionName = section.name;
 

@@ -14,6 +14,7 @@ import {
     type Trivia,
 } from "./types.js";
 import { buildLine } from "./layout.js";
+import { applyCase } from "./caseNormalizer.js";
 import {
     type AlignmentMap,
     computeAlignment,
@@ -59,7 +60,7 @@ function printDivision(
     const lines: string[] = [];
 
     lines.push(...printTrivia(division.leadingTrivia, format));
-    lines.push(buildLine(format, { areaA: true, content: division.headerText }));
+    lines.push(buildLine(format, { areaA: true, content: applyCase(division.headerText, options) }));
 
     switch (division.divisionType) {
         case "DataDivision":
@@ -108,7 +109,7 @@ function printDataDivisionChildren(
                 lines.push(buildLine(format, { areaA: true, content: child.rawText }));
                 break;
             default:
-                lines.push(...printGenericChild(child, format));
+                lines.push(...printGenericChild(child, format, options));
                 break;
         }
     }
@@ -136,7 +137,7 @@ function printProcedureDivisionChildren(
                 lines.push(buildLine(format, { areaA: false, content: child.rawText }));
                 break;
             default:
-                lines.push(...printGenericChild(child, format));
+                lines.push(...printGenericChild(child, format, options));
                 break;
         }
     }
@@ -155,17 +156,17 @@ function printGenericDivisionChildren(
         switch (child.kind) {
             case "Section":
                 lines.push(...printTrivia(child.leadingTrivia, format));
-                lines.push(buildLine(format, { areaA: true, content: child.headerText }));
+                lines.push(buildLine(format, { areaA: true, content: applyCase(child.headerText, options) }));
                 for (const subChild of child.children) {
-                    lines.push(...printGenericChild(subChild, format));
+                    lines.push(...printGenericChild(subChild, format, options));
                 }
                 break;
             case "SelectEntry":
                 lines.push(...printTrivia(child.leadingTrivia, format));
-                lines.push(buildLine(format, { areaA: true, content: child.rawText }));
+                lines.push(buildLine(format, { areaA: true, content: applyCase(child.rawText, options) }));
                 break;
             default:
-                lines.push(...printGenericChild(child, format));
+                lines.push(...printGenericChild(child, format, options));
                 break;
         }
     }
@@ -173,15 +174,17 @@ function printGenericDivisionChildren(
     return lines;
 }
 
-function printGenericChild(child: DivisionChild, format: SourceFormat): string[] {
+function printGenericChild(child: DivisionChild, format: SourceFormat, options?: FormatterOptions): string[] {
     const lines: string[] = [];
     if ("leadingTrivia" in child && Array.isArray(child.leadingTrivia)) {
         lines.push(...printTrivia(child.leadingTrivia as Trivia[], format));
     }
     if ("rawText" in child && typeof child.rawText === "string") {
-        lines.push(buildLine(format, { areaA: true, content: child.rawText }));
+        const text = options ? applyCase(child.rawText, options) : child.rawText;
+        lines.push(buildLine(format, { areaA: true, content: text }));
     } else if ("headerText" in child && typeof child.headerText === "string") {
-        lines.push(buildLine(format, { areaA: true, content: child.headerText }));
+        const text = options ? applyCase(child.headerText, options) : child.headerText;
+        lines.push(buildLine(format, { areaA: true, content: text }));
     }
     return lines;
 }
