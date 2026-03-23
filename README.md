@@ -1,92 +1,119 @@
 # KOPO Formatter for COBOL
 
-An opinionated but configurable code formatter for COBOL, designed to enforce consistent styling and indentation within Visual Studio Code. This extension helps maintain clean, readable, and standardized COBOL source code.
+An opinionated but configurable code formatter for COBOL, designed to enforce consistent styling and indentation within Visual Studio Code.
+
+## How it works
+
+The formatter uses a **parse → AST → print** pipeline rather than processing source line-by-line.
+
+1. **Format detection** — The source is first inspected to determine whether it is fixed-form or free-form COBOL. The detector checks for `>>SOURCE FORMAT IS FREE/FIXED` compiler directives, then falls back to heuristics (sequence numbers in columns 1–6, keywords at column 1, `*>` comments). The result can also be forced via a setting.
+
+2. **Scanning** — The raw source text is converted into a list of logical `SourceLine` objects. In fixed-form mode this means stripping the sequence area (cols 1–6), reading the indicator character (col 7), extracting program text from cols 8–72, and joining continuation lines (col 7 = `-`). Blank lines and comment lines (`*`, `/`) are recorded as trivia and attached to the following node.
+
+3. **Parsing** — A hand-written recursive descent parser walks the source lines and builds an **Abstract Syntax Tree (AST)**. The tree reflects the logical structure of the program:
+   - `SourceFile` → `Division[]`
+   - Each division contains sections and entries
+   - The Data Division parser builds a proper level-number hierarchy — `01` items own their `05`/`10`/... children as nested `DataEntry` nodes
+   - The Procedure Division parser recognises block statements (`IF`, `EVALUATE`, `PERFORM`, `READ`, etc.) and nests their bodies as child nodes, so indentation is a product of tree depth rather than mutable counters
+   - Anything the parser does not recognise becomes an `UnparsedLine` node and is passed through verbatim — the formatter never destroys code it does not understand
+
+4. **Printing** — The printer walks the AST and emits formatted lines. Before emitting the Data Division it runs a pre-pass over all `DataEntry` nodes to compute the maximum column width per indent depth, which is used to align `PIC` and `VALUE` clauses. Procedure division indentation is calculated purely from the recursion depth of the tree walk — no state is carried between lines.
 
 ## Features
 
-This formatter provides a wide range of features to automatically clean up your COBOL files:
-
--   **Automatic Indentation**: Correctly indents procedural blocks, including:
-    -   `IF...ELSE...END-IF`
-    -   `EVALUATE...WHEN...END-EVALUATE`
-    -   `READ...AT END...NOT AT END...END-READ`
-    -   `PERFORM` loops (`UNTIL`, `VARYING`, etc.)
-    -   Multi-line `STRING` statements.
--   **Data Division Alignment**:
-    -   Optionally aligns `PIC`, `PICTURE`, and `VALUE` clauses in the `FILE SECTION`, `WORKING-STORAGE SECTION`, and `LINKAGE SECTION` to a consistent column for enhanced readability.
-    -   Special alignment for `VALUE` clauses on Level 78 and 88 items.
--   **COBOL Area Formatting**: Correctly places `DIVISION`, `SECTION`, and paragraph headers in Area A, and statements in Area B.
--   **Whitespace Control**:
-    -   Converts all tabs to spaces.
-    -   Removes all trailing whitespace from lines.
--   **Code Structure**:
-    -   Optionally adds a blank line after `EXIT.` statements to improve visual separation.
+- **Fixed-form column structure** — divisions/sections/paragraphs placed in Area A (col 8), statements in Area B (col 12+), indicator column preserved
+- **Data division hierarchy** — level numbers produce correct nested indentation; `01`/`77`/`78` items reset to the root
+- **PIC/VALUE alignment** — `PIC` and `VALUE` clauses aligned to a consistent column within each indentation group; Level 88 items align with their parent's group
+- **Procedure division block indentation** — `IF`/`EVALUATE`/`PERFORM`/`READ` blocks and all their sub-clauses (`ELSE`, `WHEN`, `AT END`, `ON SIZE ERROR`, etc.)
+- **Comment preservation** — comment lines (`*` and `/` in col 7) preserved exactly, including their indicator character
+- **Blank line preservation** — blank lines are kept in their original positions
+- **Tab-to-space conversion** and trailing whitespace removal on all lines
+- **Free-form COBOL support** — detects or is configured to handle free-form source; emits clean indented output without fixed-form column constraints
+- **Safe by default** — unrecognised constructs are never mangled
 
 ## Installation
 
-This extension is not yet published on the VS Code Marketplace. To install it, you must build the `.vsix` file from the source and install it manually.
+This extension is not yet published on the VS Code Marketplace. Build the `.vsix` from source and install it manually.
 
-1.  Build the extension by following the steps in the [Building from Source](#building-from-source) section below. This will create a `kopo-formatter-x.x.x.vsix` file in the `build` directory.
-2.  Open Visual Studio Code.
-3.  Go to the **Extensions** view (Ctrl+Shift+X).
-4.  Click the **three dots (...)** at the top-right of the Extensions view.
-5.  Select **"Install from VSIX..."**.
-6.  Navigate to the `build` folder in the project and select the `.vsix` file.
-7.  Reload VS Code when prompted.
+1. Build the extension following the steps in [Building from Source](#building-from-source). A `.vsix` file will appear in the `build/` directory.
+2. Open Visual Studio Code.
+3. Open the Extensions view (`Ctrl+Shift+X`).
+4. Click the **...** menu at the top right of the Extensions view.
+5. Select **Install from VSIX...** and pick the file from the `build/` folder.
+6. Reload VS Code when prompted.
 
 ## Usage
 
-Once installed, the formatter integrates directly with VS Code's built-in formatting capabilities.
+Once installed, KOPO Formatter integrates with VS Code's standard formatting commands.
 
--   **Format Document Command**:
-    -   Open a COBOL file (`.cbl`, `.cob`, etc.).
-    -   Open the Command Palette (Ctrl+Shift+P).
-    -   Type "Format Document" and press Enter.
-    -   If prompted, select "KOPO Cobol Formatter" as the default formatter for COBOL files.
--   **Keyboard Shortcut**:
-    -   Press `Shift+Alt+F` (Windows/Linux) or `Shift+Option+F` (Mac).
--   **Format on Save**:
-    -   To automatically format your files every time you save (not recommended), add the following to your VS Code `settings.json` file:
-        ```json
-        "[COBOL]": {
-            "editor.formatOnSave": true
-        }
-        ```
+- **Format Document** — `Shift+Alt+F` (Windows/Linux) or `Shift+Option+F` (Mac), or open the Command Palette (`Ctrl+Shift+P`) and run *Format Document*.
+- **Format on Save** — add the following to your `settings.json`:
+  ```json
+  "[COBOL]": {
+      "editor.formatOnSave": true
+  }
+  ```
 
-## Extension Settings
+## Settings
 
-This extension can be configured in your VS Code settings (`settings.json`) or through the Settings UI. All settings are prefixed with `kopo-formatter`.
+All settings are prefixed with `kopo-formatter` and can be set in the VS Code Settings UI or `settings.json`.
 
--   `kopo-formatter.indentationSpaces` (default: `3`)
-
-    -   The number of spaces to use for a single level of indentation.
-
--   `kopo-formatter.addEmptyLineAfterExit` (default: `true`)
-
-    -   If `true`, an empty line will be inserted after an `EXIT.` statement, unless one already exists.
-
--   `kopo-formatter.evaluateIndentWhen` (default: `true`)
-
-    -   If `true`, `WHEN` and `WHEN OTHER` clauses will be indented one level inside an `EVALUATE` block.
-
--   `kopo-formatter.alignPicClauses` (default: `true`)
-    -   If `true`, the formatter will align `PIC` and `VALUE` clauses in the `FILE SECTION`, `WORKING-STORAGE SECTION`, and `LINKAGE SECTION` to a consistent column. This also affects `VALUE` clauses for Level 78 and 88 items.
+| Setting | Default | Description |
+|---|---|---|
+| `indentationSpaces` | `3` | Number of spaces per indentation level |
+| `addEmptyLineAfterExit` | `true` | Insert a blank line after `EXIT.` statements |
+| `evaluateIndentWhen` | `true` | Indent `WHEN`/`WHEN OTHER` clauses inside `EVALUATE` blocks |
+| `alignPicClauses` | `true` | Align `PIC` and `VALUE` clauses to a consistent column in the Data Division |
+| `sourceFormat` | `"auto"` | Source format: `"auto"` (detect), `"fixed"` (fixed-form), or `"free"` (free-form) |
 
 ## Building from Source
 
-To build the extension yourself, you need Node.js and npm installed.
+Requires Node.js 20+ and npm.
 
-1.  **Clone the repository**:
-    ```bash
-    git clone <repository-url>
-    cd kopo-formatter
-    ```
-2.  **Install dependencies**:
-    ```bash
-    npm install
-    ```
-3.  **Run the build script**:
-    `bash
-npm run build
-`
-    This will create the installable `.vsix` file in the `build/` directory.
+```bash
+# Clone and install dependencies
+git clone https://github.com/Tawga/kopo-formatter
+cd kopo-formatter
+npm install
+
+# Type-check
+npm run compile
+
+# Run tests
+npm test
+
+# Bundle and package as .vsix
+npm run package
+```
+
+The `npm run build` command compiles TypeScript and bundles the extension into `dist/extension.js` via esbuild. The `npm run package` command additionally packages it as a `.vsix` file in the `build/` directory.
+
+## Project Structure
+
+```
+src/
+  extension.ts          VS Code entry point (thin wrapper, no business logic)
+  core/
+    index.ts            Public API — format() and parseSource()
+    constants.ts        COBOL keyword lists and column constants
+    types.ts            AST node type definitions
+    options.ts          FormatterOptions interface and defaults
+    tokens.ts           SourceLine type
+    scanner.ts          Format-aware tokenizer
+    formatDetector.ts   Fixed-form vs free-form detection
+    parser.ts           Top-level recursive descent parser
+    parser/
+      dataDivisionParser.ts        Data Division — level hierarchy
+      procedureDivisionParser.ts   Procedure Division — block statements
+      miscDivisionParser.ts        Identification / Environment divisions
+    printer.ts          AST walker and output coordinator
+    layout.ts           Line construction helpers (fixed/free-form)
+    printer/
+      dataPrinter.ts    Data entries, PIC/VALUE alignment pre-pass
+      procedurePrinter.ts  Procedure statements, depth-based indentation
+test/
+  scanner.test.ts
+  formatDetector.test.ts
+  parser.test.ts
+  integration.test.ts
+```
