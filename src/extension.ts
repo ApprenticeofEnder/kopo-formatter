@@ -14,15 +14,19 @@ export function activate(context: vscode.ExtensionContext): void {
         {
             provideDocumentFormattingEdits(
                 document: vscode.TextDocument,
+                formattingOptions: vscode.FormattingOptions,
             ): vscode.TextEdit[] | null {
                 const settings = vscode.workspace.getConfiguration("kopo-formatter");
 
                 const options: Partial<FormatterOptions> = {
-                    indentationSpaces: settings.get<number>("indentationSpaces"),
+                    // VS Code's editor.tabSize takes priority; fall back to the kopo setting
+                    indentationSpaces: formattingOptions.tabSize
+                        ?? settings.get<number>("indentationSpaces"),
                     addEmptyLineAfterExit: settings.get<boolean>("addEmptyLineAfterExit"),
                     evaluateIndentWhen: settings.get<boolean>("evaluateIndentWhen"),
                     alignPicClauses: settings.get<boolean>("alignPicClauses"),
                     sourceFormat: settings.get<"auto" | "fixed" | "free">("sourceFormat"),
+                    keywordCase: settings.get<"upper" | "lower" | "preserve">("keywordCase"),
                 };
 
                 const text = document.getText();

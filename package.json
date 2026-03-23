@@ -31,7 +31,7 @@
                 "kopo-formatter.indentationSpaces": {
                     "type": "number",
                     "default": 3,
-                    "description": "Number of spaces to use for one level of indentation"
+                    "description": "Fallback indentation spaces when no editor tab size is configured. Normally editor.tabSize is used automatically."
                 },
                 "kopo-formatter.addEmptyLineAfterExit": {
                     "type": "boolean",
@@ -53,6 +53,17 @@
                     "default": "auto",
                     "enum": ["auto", "fixed", "free"],
                     "description": "COBOL source format: auto-detect, fixed-form, or free-form"
+                },
+                "kopo-formatter.keywordCase": {
+                    "type": "string",
+                    "default": "preserve",
+                    "enum": ["preserve", "upper", "lower"],
+                    "enumDescriptions": [
+                        "Do not change keyword casing",
+                        "Transform all COBOL reserved words to UPPERCASE",
+                        "Transform all COBOL reserved words to lowercase"
+                    ],
+                    "description": "Normalize the case of COBOL reserved words"
                 }
             }
         },
