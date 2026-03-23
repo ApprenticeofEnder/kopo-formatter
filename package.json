@@ -6,7 +6,7 @@
         "url": "https://github.com/Tawga/kopo-formatter"
     },
     "description": "Visual Studio Code extension to format Cobol files",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "engines": {
         "vscode": "^1.102.0"
     },
@@ -51,13 +51,21 @@
                 "kopo-formatter.sourceFormat": {
                     "type": "string",
                     "default": "auto",
-                    "enum": ["auto", "fixed", "free"],
+                    "enum": [
+                        "auto",
+                        "fixed",
+                        "free"
+                    ],
                     "description": "COBOL source format: auto-detect, fixed-form, or free-form"
                 },
                 "kopo-formatter.keywordCase": {
                     "type": "string",
                     "default": "preserve",
-                    "enum": ["preserve", "upper", "lower"],
+                    "enum": [
+                        "preserve",
+                        "upper",
+                        "lower"
+                    ],
                     "enumDescriptions": [
                         "Do not change keyword casing",
                         "Transform all COBOL reserved words to UPPERCASE",
