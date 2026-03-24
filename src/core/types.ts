@@ -119,6 +119,8 @@ export interface SimpleStatement {
     kind: "SimpleStatement";
     verb: string;
     rawText: string;
+    /** Subsequent lines that belong to the same multi-line statement (e.g. DISPLAY options) */
+    continuationLines?: string[];
     leadingTrivia: Trivia[];
 }
 
@@ -128,6 +130,8 @@ export interface IfStatement {
     thenBody: ProcedureStatement[];
     elseBody: ProcedureStatement[];
     leadingTrivia: Trivia[];
+    /** True when the block was closed by a period rather than END-IF */
+    periodTerminated?: boolean;
 }
 
 export interface EvaluateStatement {
@@ -154,6 +158,10 @@ export interface PerformBlock {
 export interface ReadBlock {
     kind: "ReadBlock";
     headerText: string;
+    /** The END-xxx terminator to emit (e.g. "END-READ", "END-REWRITE") */
+    endTerminator: string;
+    /** True when the block was closed by a period rather than END-xxx */
+    periodTerminated?: boolean;
     atEndBody: ProcedureStatement[];
     notAtEndBody: ProcedureStatement[];
     invalidKeyBody: ProcedureStatement[];
