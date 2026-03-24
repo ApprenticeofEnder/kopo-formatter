@@ -40,9 +40,15 @@ export function detectFormat(source: string, override?: "auto" | "fixed" | "free
         // Fixed-form indicators:
         // - cols 1-6 are numeric (sequence numbers)
         // - col 7 is space, *, /, or -
-        if (line.length >= 7) {
-            const seqArea = line.substring(0, 6);
-            const indicator = line.charAt(6);
+        // Expand tabs (8-column stops) before checking column positions
+        let expanded = "";
+        for (const ch of line) {
+            if (ch === "\t") expanded += " ".repeat(8 - (expanded.length % 8));
+            else expanded += ch;
+        }
+        if (expanded.length >= 7) {
+            const seqArea = expanded.substring(0, 6);
+            const indicator = expanded.charAt(6);
 
             if (/^\d{6}$/.test(seqArea) || /^\s{6}$/.test(seqArea)) {
                 if (" */-dD".includes(indicator)) {

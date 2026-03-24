@@ -14,6 +14,25 @@ import { type SourceFormat } from "./formatDetector.js";
 import { SEQ_NUMBER_END, PROGRAM_TEXT_END } from "./constants.js";
 
 /**
+ * Expand tabs using 8-column tab stops (standard for fixed-form COBOL).
+ */
+function expandTabs(line: string): string {
+    let result = "";
+    let col = 0;
+    for (const ch of line) {
+        if (ch === "\t") {
+            const spaces = 8 - (col % 8);
+            result += " ".repeat(spaces);
+            col += spaces;
+        } else {
+            result += ch;
+            col++;
+        }
+    }
+    return result;
+}
+
+/**
  * Scan raw source text into logical source lines.
  */
 export function scan(source: string, format: SourceFormat): SourceLine[] {
@@ -30,7 +49,7 @@ function scanFixedForm(rawLines: string[]): SourceLine[] {
     const result: SourceLine[] = [];
 
     for (let i = 0; i < rawLines.length; i++) {
-        const original = rawLines[i].replace(/\t/g, "    ");
+        const original = expandTabs(rawLines[i]);
         const originalText = rawLines[i];
 
         // Blank line
@@ -79,7 +98,7 @@ function scanFixedForm(rawLines: string[]): SourceLine[] {
         if (indicator === "-") {
             // Continuation: append to previous non-blank, non-comment line
             const programText = original.length > SEQ_NUMBER_END + 1
-                ? original.substring(SEQ_NUMBER_END + 1, Math.min(original.length, PROGRAM_TEXT_END))
+                ? original.substring(SEQ_NUMBER_END + 1)
                 : "";
 
             // Find the last non-comment, non-blank line to append to
@@ -96,9 +115,10 @@ function scanFixedForm(rawLines: string[]): SourceLine[] {
             continue;
         }
 
-        // Normal program line: extract cols 8-72
+        // Normal program line: extract cols 8 onward (no upper limit — formatter
+        // output may exceed col 72 for long logical lines joined from continuations)
         const programText = original.length > SEQ_NUMBER_END + 1
-            ? original.substring(SEQ_NUMBER_END + 1, Math.min(original.length, PROGRAM_TEXT_END))
+            ? original.substring(SEQ_NUMBER_END + 1)
             : "";
 
         result.push({
@@ -118,7 +138,7 @@ function scanFreeForm(rawLines: string[]): SourceLine[] {
     const result: SourceLine[] = [];
 
     for (let i = 0; i < rawLines.length; i++) {
-        const original = rawLines[i].replace(/\t/g, "    ");
+        const original = expandTabs(rawLines[i]);
         const originalText = rawLines[i];
 
         if (!original.trim()) {
