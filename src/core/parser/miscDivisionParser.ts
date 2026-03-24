@@ -9,6 +9,7 @@ import {
     type Section,
     type DivisionEntry,
     type SelectEntry,
+    type CopyStatement,
     type UnparsedLine,
 } from "../types.js";
 
@@ -22,10 +23,8 @@ export function parseIdentificationChildren(state: ParserState): DivisionChild[]
     while (state.pos < state.lines.length && !isAtDivisionHeader(state)) {
         const trivia = consumeTrivia(state);
         if (state.pos >= state.lines.length || isAtDivisionHeader(state)) {
-            // Attach trailing trivia to last child or discard
-            if (children.length > 0 && trivia.length > 0) {
-                // We'll just add unparsed blanks
-            }
+            // Put back consumed trivia so the next division captures it as its leadingTrivia
+            state.pos -= trivia.length;
             break;
         }
 
@@ -52,6 +51,8 @@ export function parseEnvironmentChildren(state: ParserState): DivisionChild[] {
     while (state.pos < state.lines.length && !isAtDivisionHeader(state)) {
         const trivia = consumeTrivia(state);
         if (state.pos >= state.lines.length || isAtDivisionHeader(state)) {
+            // Put back consumed trivia so the next division captures it as its leadingTrivia
+            state.pos -= trivia.length;
             break;
         }
 
@@ -145,6 +146,14 @@ function parseEnvironmentSection(state: ParserState, leadingTrivia: import("../t
                 rawText,
                 leadingTrivia: trivia,
             });
+        } else if (upper.startsWith("COPY ")) {
+            const line = state.lines[state.pos];
+            section.children.push({
+                kind: "CopyStatement",
+                rawText: line.text.trim(),
+                leadingTrivia: trivia,
+            } as CopyStatement);
+            state.pos++;
         } else {
             const line = state.lines[state.pos];
             section.children.push({
