@@ -30,6 +30,112 @@ import {
     printStatement,
 } from "./printer/procedurePrinter.js";
 
+// ─── Line wrapping ────────────────────────────────────────────────────────────
+
+const FIXED_MAX_COL = 72;
+const FIXED_PREFIX_LEN = 7; // 6 seq area chars + 1 indicator char
+const FIXED_CONTENT_MAX = FIXED_MAX_COL - FIXED_PREFIX_LEN; // 65 chars
+
+/**
+ * Compute how many spaces to place after the "      -" continuation marker.
+ *
+ * For data entries that begin with a COBOL level number (all digits, e.g. "01", "05"),
+ * the continuation aligns with the *second* token (the data name), not the level
+ * number itself — so "EXCEPTION-VALUE" lines up with "PUSH-BUTTON".
+ * For procedure statements the continuation aligns with the *first* token (the verb).
+ * Minimum is 3 spaces after the dash.
+ */
+function findContinuationIndent(content: string): number {
+    const m = content.match(/^(\s*)(\S+)(\s+)\S/);
+    if (m) {
+        const [, leading, first, gap] = m;
+        if (/^\d+$/.test(first)) {
+            // Level number: align with the data name that follows it
+            return leading.length + first.length + gap.length;
+        }
+        // Procedure verb or other: align with the first token
+        return Math.max(3, leading.length);
+    }
+    const firstPos = content.search(/\S/);
+    return Math.max(3, firstPos >= 0 ? firstPos : 3);
+}
+
+/**
+ * Wrap a single fixed-form line that exceeds column 72 using continuation markers.
+ * Comment lines and blank lines are passed through unchanged.
+ *
+ * The continuation prefix is computed dynamically: it aligns the continuation
+ * content with the first non-space token in the original line's content area,
+ * so "EXCEPTION-VALUE" lines up with "PUSH-BUTTON", DISPLAY options line up
+ * with the DISPLAY verb, etc.  Minimum padding is 3 spaces after the indicator.
+ *
+ * When `useDash` is false, the indicator in col 7 is a space instead of "-",
+ * so continuation lines look like normal lines (omitContinuationLines mode).
+ */
+function wrapFixedLine(line: string, useDash: boolean = true): string[] {
+    if (line.length <= FIXED_MAX_COL) return [line];
+    if (!line.trim()) return [line];
+
+    const indicator = line.length > 6 ? line[6] : " ";
+    if (indicator === "*" || indicator === "/") return [line];
+
+    // Extract content after the 7-char prefix (seq area + indicator) and compute
+    // the appropriate continuation indent for this line type.
+    const content = line.substring(FIXED_PREFIX_LEN);
+    const continuationSpaces = findContinuationIndent(content);
+    const contIndicator = useDash ? "-" : " ";
+    const contPfx = "      " + contIndicator + " ".repeat(continuationSpaces);
+    const contMax = FIXED_MAX_COL - contPfx.length;
+
+    const splitAt = findSplitPoint(content, FIXED_CONTENT_MAX);
+    if (splitAt <= 0) return [line]; // Can't split safely
+
+    const prefix = line.substring(0, FIXED_PREFIX_LEN);
+    const firstPart = content.substring(0, splitAt);
+    const rest = content.substring(splitAt).trimStart();
+
+    const continuationLine = contPfx + rest;
+    // Guard: if the continuation is still too long, recurse
+    if (continuationLine.length > FIXED_MAX_COL) {
+        return [prefix + firstPart, ...wrapFixedLine(continuationLine, useDash)];
+    }
+    return [prefix + firstPart, continuationLine];
+}
+
+/**
+ * Find the last space in `text` at or before `maxLen` that is not inside a string literal.
+ * Prefers a split point whose next token is NOT a string literal (so quoted values
+ * don't end up alone on a continuation line). Falls back to any space if needed.
+ * Returns -1 if no safe split point found.
+ */
+function findSplitPoint(text: string, maxLen: number): number {
+    let inString = false;
+    let quoteChar = "";
+    let lastSpace = -1;       // any valid space
+    let lastSafeSpace = -1;   // space whose successor is not a quote
+
+    for (let i = 0; i < Math.min(text.length, maxLen); i++) {
+        const ch = text[i];
+        if (!inString && (ch === '"' || ch === "'")) {
+            inString = true;
+            quoteChar = ch;
+        } else if (inString && ch === quoteChar) {
+            inString = false;
+        } else if (!inString && ch === " ") {
+            lastSpace = i;
+            const next = text[i + 1];
+            if (next !== '"' && next !== "'") {
+                lastSafeSpace = i;
+            }
+        }
+    }
+
+    // Prefer a split that doesn't strand a string literal at the start of the continuation
+    return lastSafeSpace >= 0 ? lastSafeSpace : lastSpace;
+}
+
+// ─── Print ────────────────────────────────────────────────────────────────────
+
 /**
  * Print a SourceFile AST to formatted COBOL text.
  */
@@ -49,7 +155,17 @@ export function print(ast: SourceFile, options: FormatterOptions): string {
     // Trailing trivia
     lines.push(...printTrivia(ast.trailingTrivia, format));
 
-    return lines.join("\n");
+    // Collapse consecutive blank lines (e.g. addEmptyLineAfterExit + preserved trivia blank)
+    const deduped = lines.filter((line, i) => !(line === "" && i > 0 && lines[i - 1] === ""));
+
+    // Wrap long lines for fixed-form output.
+    // When omitContinuationLines is on, wrap using a space indicator instead of "-"
+    // so continuation lines look like normal indented lines (no dash in col 7).
+    const wrapped = (format === "fixed" && options.wrapLongLines)
+        ? deduped.flatMap(line => wrapFixedLine(line, !options.omitContinuationLines))
+        : deduped;
+
+    return wrapped.join("\n");
 }
 
 function printDivision(
@@ -73,6 +189,9 @@ function printDivision(
             lines.push(...printGenericDivisionChildren(division.children, options, format));
             break;
     }
+
+    // Blank line placed AFTER the division's content ends (before the next division)
+    if (options.addEmptyLineAfterDivision) lines.push("");
 
     return lines;
 }
@@ -132,10 +251,14 @@ function printProcedureDivisionChildren(
             case "Paragraph":
                 lines.push(...printParagraph(child, options, format));
                 break;
-            case "UnparsedLine":
+            case "UnparsedLine": {
                 lines.push(...printTrivia(child.leadingTrivia, format));
-                lines.push(buildLine(format, { areaA: false, content: child.rawText }));
+                // DECLARATIVES and END DECLARATIVES are Area A structural markers
+                const upperRaw = child.rawText.trimStart().toUpperCase();
+                const isAreaA = upperRaw.startsWith("DECLARATIVES") || upperRaw.startsWith("END DECLARATIVES");
+                lines.push(buildLine(format, { areaA: isAreaA, content: applyCase(child.rawText, options) }));
                 break;
+            }
             default:
                 lines.push(...printGenericChild(child, format, options));
                 break;
@@ -158,8 +281,17 @@ function printGenericDivisionChildren(
                 lines.push(...printTrivia(child.leadingTrivia, format));
                 lines.push(buildLine(format, { areaA: true, content: applyCase(child.headerText, options) }));
                 for (const subChild of child.children) {
-                    lines.push(...printGenericChild(subChild, format, options));
+                    if (subChild.kind === "CopyStatement") {
+                        // COPY statements inside FILE-CONTROL / environment sections
+                        // are printed at Area B (indented under the section header)
+                        lines.push(...printTrivia(subChild.leadingTrivia, format));
+                        lines.push(buildLine(format, { areaA: false, indent: 0, content: applyCase(subChild.rawText, options) }));
+                    } else {
+                        lines.push(...printGenericChild(subChild, format, options));
+                    }
                 }
+                // Blank AFTER the section's content ends
+                if (options.addEmptyLineAfterSection) lines.push("");
                 break;
             case "SelectEntry":
                 lines.push(...printTrivia(child.leadingTrivia, format));

@@ -13,7 +13,7 @@ import {
 } from "../types.js";
 import { AREA_A_START } from "../constants.js";
 import { buildLine } from "../layout.js";
-import { applyCase } from "../caseNormalizer.js";
+import { applyCase, applyKeywordCase } from "../caseNormalizer.js";
 
 export interface AlignmentMap {
     /** Maps indent depth (in spaces) to the column where PIC/VALUE should start */
@@ -108,9 +108,9 @@ export function printDataEntry(
     const aligned = tryAlignEntry(entry, indent, depth, options, alignment, sectionName);
 
     if (aligned) {
-        lines.push(buildLine(format, { areaA: true, indent: 0, content: applyCase(aligned, options) }));
+        lines.push(buildLine(format, { areaA: true, indent: 0, content: applyKeywordCase(aligned, options) }));
     } else {
-        // No alignment — normalize spacing
+        // No alignment — normalizeDataLine already collapses spaces, applyCase handles case
         const normalized = normalizeDataLine(entry);
         const content = " ".repeat(indent) + normalized;
         lines.push(buildLine(format, { areaA: true, indent: 0, content: applyCase(content, options) }));
@@ -254,6 +254,9 @@ export function printDataSection(
                 break;
         }
     }
+
+    // Blank AFTER the section's content ends (before the next section)
+    if (options.addEmptyLineAfterSection) lines.push("");
 
     return lines;
 }

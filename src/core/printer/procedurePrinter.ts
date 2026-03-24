@@ -35,12 +35,18 @@ export function printProcedureSection(
 ): string[] {
     const lines: string[] = [];
     lines.push(...printTrivia(section.leadingTrivia, format));
-    // Section header goes in Area A
-    lines.push(buildLine(format, { areaA: true, content: c(section.headerText, options) }));
+    // Section header goes in Area A; optionally uppercase the user-defined section name
+    const sectionHeader = options.uppercaseProcedureNames
+        ? section.headerText.replace(section.name, section.name.toUpperCase())
+        : section.headerText;
+    lines.push(buildLine(format, { areaA: true, content: c(sectionHeader, options) }));
 
     for (const para of section.paragraphs) {
         lines.push(...printParagraph(para, options, format));
     }
+
+    // Blank AFTER the section's content ends (before the next section)
+    if (options.addEmptyLineAfterSection) lines.push("");
 
     return lines;
 }
@@ -56,9 +62,10 @@ export function printParagraph(
     const lines: string[] = [];
     lines.push(...printTrivia(para.leadingTrivia, format));
 
-    // Paragraph name in Area A (if it has a name)
+    // Paragraph name in Area A (if it has a name); optionally uppercase
     if (para.name) {
-        lines.push(buildLine(format, { areaA: true, content: para.name + "." }));
+        const paraName = options.uppercaseProcedureNames ? para.name.toUpperCase() : para.name;
+        lines.push(buildLine(format, { areaA: true, content: paraName + "." }));
     }
 
     // Print statements at base indent level (0)
@@ -96,6 +103,55 @@ export function printStatement(
     }
 }
 
+/**
+ * Align DELIMITED BY clauses in a STRING/UNSTRING statement so that all data names
+ * start at the same column and all DELIMITED BY keywords line up.
+ *
+ * Returns updated rawText, continuationLines, and the continuation indent to use
+ * (which equals the offset of the first data name after the verb keyword).
+ */
+function buildDelimitedByAlignment(
+    rawText: string,
+    continuationLines: string[],
+    depth: number,
+    options: FormatterOptions,
+): { rawText: string; continuationLines: string[]; continuationIndent: number } {
+    const verbMatch = rawText.match(/^(STRING|UNSTRING)\s+/i);
+    if (!verbMatch) {
+        return { rawText, continuationLines, continuationIndent: depth * options.indentationSpaces + options.indentationSpaces };
+    }
+
+    const verbPrefix = verbMatch[0]; // e.g. "STRING " — length is the data-name column offset
+    const continuationIndent = depth * options.indentationSpaces + verbPrefix.length;
+
+    // All logical lines: the part after the verb on line 1, then each continuation line
+    const allDataLines = [rawText.substring(verbPrefix.length), ...continuationLines];
+
+    // Split each line into [data-name part] and [DELIMITED BY …] if present
+    const parts = allDataLines.map(line => {
+        const m = line.match(/\bDELIMITED\s+BY\b/i);
+        if (m && m.index !== undefined) {
+            return { dataPart: line.substring(0, m.index).trimEnd(), delimPart: line.substring(m.index), hasDelim: true };
+        }
+        return { dataPart: line, delimPart: "", hasDelim: false };
+    });
+
+    // Pad every data-name part to the same width so DELIMITED BY aligns
+    const maxDataLen = parts.filter(p => p.hasDelim).reduce((mx, p) => Math.max(mx, p.dataPart.length), 0);
+
+    const rebuilt = parts.map(p => {
+        if (!p.hasDelim) return p.dataPart;
+        const padding = " ".repeat(maxDataLen - p.dataPart.length + 1);
+        return p.dataPart + padding + p.delimPart;
+    });
+
+    return {
+        rawText: verbPrefix + rebuilt[0],
+        continuationLines: rebuilt.slice(1),
+        continuationIndent,
+    };
+}
+
 function printSimpleStatement(
     stmt: SimpleStatement,
     depth: number,
@@ -105,7 +161,23 @@ function printSimpleStatement(
     const lines: string[] = [];
     lines.push(...printTrivia(stmt.leadingTrivia, format));
     const indent = depth * options.indentationSpaces;
-    lines.push(buildLine(format, { areaA: false, indent, content: c(stmt.rawText, options) }));
+    const contLines = stmt.continuationLines ?? [];
+
+    if (options.alignDelimitedBy && (stmt.verb === "STRING" || stmt.verb === "UNSTRING")) {
+        // Normalize case/whitespace first, then align
+        const normalizedRaw = c(stmt.rawText, options);
+        const normalizedCont = contLines.map(l => c(l, options));
+        const aligned = buildDelimitedByAlignment(normalizedRaw, normalizedCont, depth, options);
+        lines.push(buildLine(format, { areaA: false, indent, content: aligned.rawText }));
+        for (const contLine of aligned.continuationLines) {
+            lines.push(buildLine(format, { areaA: false, indent: aligned.continuationIndent, content: contLine }));
+        }
+    } else {
+        lines.push(buildLine(format, { areaA: false, indent, content: c(stmt.rawText, options) }));
+        for (const contLine of contLines) {
+            lines.push(buildLine(format, { areaA: false, indent: indent + options.indentationSpaces, content: c(contLine, options) }));
+        }
+    }
 
     // Add empty line after EXIT if option enabled
     if (options.addEmptyLineAfterExit && stmt.verb === "EXIT" && stmt.rawText.trim().toUpperCase().endsWith("EXIT.")) {
@@ -132,7 +204,9 @@ function printIfStatement(
         lines.push(...printStatement(child, depth + 1, options, format));
     }
 
-    // Else clause
+    // Else clause: print whenever elseBody is present.
+    // (An IF whose ELSE body ended with a period is still period-terminated overall,
+    //  so we do NOT guard this on !periodTerminated — the ELSE must still be emitted.)
     if (stmt.elseBody.length > 0) {
         lines.push(buildLine(format, { areaA: false, indent, content: c("ELSE", options) }));
         for (const child of stmt.elseBody) {
@@ -140,8 +214,10 @@ function printIfStatement(
         }
     }
 
-    // END-IF
-    lines.push(buildLine(format, { areaA: false, indent, content: c("END-IF", options) }));
+    // END-IF only when block-structured (not period-terminated by either branch)
+    if (!stmt.periodTerminated) {
+        lines.push(buildLine(format, { areaA: false, indent, content: c("END-IF", options) }));
+    }
 
     return lines;
 }
@@ -241,8 +317,10 @@ function printReadBlock(
         }
     }
 
-    // END-READ
-    lines.push(buildLine(format, { areaA: false, indent, content: c("END-READ", options) }));
+    // Emit END-xxx only when the block was not already closed by a period
+    if (!stmt.periodTerminated) {
+        lines.push(buildLine(format, { areaA: false, indent, content: c(stmt.endTerminator, options) }));
+    }
 
     return lines;
 }
