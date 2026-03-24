@@ -8,14 +8,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MATERIAL_DIR = path.join(__dirname, "test_material");
 const OUTPUT_DIR = path.join(__dirname, "test_output");
 
-const FILES = ["BIP003L.CBL", "BIPA03.CBL", "ERL104PR.CBL"];
+const FILES = ["BIP003L.CBL", "BIPA03.CBL", "ERL104PR.CBL", "TEEVAHKE.CBL"];
 
 // Space=normal, *=comment, /=comment+eject, -=continuation, D=debug line
 const VALID_INDICATORS = new Set([" ", "*", "/", "-", "D"]);
 
 describe.each(FILES)("material file: %s", (filename) => {
     it("formats without error and writes output", () => {
-        const source = fs.readFileSync(path.join(MATERIAL_DIR, filename), "utf8");
+        const source = fs.readFileSync(
+            path.join(MATERIAL_DIR, filename),
+            "utf8",
+        );
         const output = format(source, { sourceFormat: "fixed" });
         expect(output.length).toBeGreaterThan(0);
 
@@ -24,14 +27,20 @@ describe.each(FILES)("material file: %s", (filename) => {
     });
 
     it("is idempotent", () => {
-        const source = fs.readFileSync(path.join(MATERIAL_DIR, filename), "utf8");
+        const source = fs.readFileSync(
+            path.join(MATERIAL_DIR, filename),
+            "utf8",
+        );
         const once = format(source, { sourceFormat: "fixed" });
         const twice = format(once, { sourceFormat: "fixed" });
         expect(twice).toBe(once);
     });
 
     it("respects fixed-form column structure", () => {
-        const source = fs.readFileSync(path.join(MATERIAL_DIR, filename), "utf8");
+        const source = fs.readFileSync(
+            path.join(MATERIAL_DIR, filename),
+            "utf8",
+        );
         const output = format(source, { sourceFormat: "fixed" });
 
         for (const line of output.split("\n")) {
