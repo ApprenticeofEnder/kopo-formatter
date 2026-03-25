@@ -2,7 +2,7 @@
  * Parser for Procedure Division: paragraphs, sections, and block statements.
  */
 
-import { type ParserState, consumeTrivia, isAtDivisionHeader, peekUpperText } from "../parser.js";
+import { type ParserState, consumeTrivia, isAtDivisionHeader, peekUpperText, peekPastTrivia } from "../parser.js";
 import {
     type DivisionChild,
     type Paragraph,
@@ -80,16 +80,18 @@ function parseProcSection(state: ParserState, leadingTrivia: Trivia[]): Procedur
     state.pos++;
 
     while (state.pos < state.lines.length && !isAtDivisionHeader(state)) {
-        const trivia = consumeTrivia(state);
-        if (state.pos >= state.lines.length || isAtDivisionHeader(state)) break;
+        // Peek ahead to decide whether to stop before consuming trivia
+        const peek = peekPastTrivia(state);
+        if (!peek.nextUpper || isAtDivisionHeader(state)) break;
 
-        const upper = peekUpperText(state);
-
-        // Stop at next SECTION or END DECLARATIVES
-        if (/^\S+\s+SECTION\.?$/.test(upper) || upper.startsWith("END DECLARATIVES")) {
-            state.pos -= trivia.length;
+        // Stop at next SECTION or END DECLARATIVES — don't consume trivia
+        if (/^\S+\s+SECTION\.?$/.test(peek.nextUpper) || peek.nextUpper.startsWith("END DECLARATIVES")) {
             break;
         }
+
+        // Now consume trivia since we're staying in this section
+        const trivia = consumeTrivia(state);
+        const upper = peekUpperText(state);
 
         if (isParagraphName(state, upper)) {
             const para = parseParagraph(state, trivia);
@@ -125,17 +127,16 @@ function parseParagraph(state: ParserState, leadingTrivia: Trivia[]): Paragraph 
 
     // Parse statements until next paragraph, section, or division
     while (state.pos < state.lines.length && !isAtDivisionHeader(state)) {
-        const trivia = consumeTrivia(state);
-        if (state.pos >= state.lines.length || isAtDivisionHeader(state)) break;
+        // Peek ahead to decide whether to stop before consuming trivia
+        const peek = peekPastTrivia(state);
+        if (!peek.nextUpper || isAtDivisionHeader(state)) break;
 
-        const upper = peekUpperText(state);
-
-        // Stop at next paragraph, section, or END DECLARATIVES
-        if (isParagraphName(state, upper) || /^\S+\s+SECTION\.?$/.test(upper) || upper.startsWith("END DECLARATIVES")) {
-            state.pos -= trivia.length;
+        // Stop at next paragraph, section, or END DECLARATIVES — don't consume trivia
+        if (isParagraphName(state, peek.nextUpper) || /^\S+\s+SECTION\.?$/.test(peek.nextUpper) || peek.nextUpper.startsWith("END DECLARATIVES")) {
             break;
         }
 
+        const trivia = consumeTrivia(state);
         const { stmts } = parseStatementSequence(state, trivia, []);
         para.statements.push(...stmts);
     }
@@ -256,10 +257,11 @@ function parseStatementSequence(
                 if (nextUpper.startsWith("END DECLARATIVES")) break;
                 if (terminators.length > 0 && matchesTerminator(nextUpper, terminators)) break;
                 if (isKnownVerb(nextUpper)) break;
-                // A line ending with AND/OR is a boolean connector: the following line
-                // continues at the same logical level, not as a sub-continuation.
-                const lastUpper = lastContinuedLine.trimEnd().toUpperCase();
-                if (lastUpper.endsWith(" AND") || lastUpper.endsWith(" OR")) break;
+                // A line ending with AND/OR is a boolean connector: the following
+                // line continues the same logical expression. Keep collecting so
+                // that multi-line conditions spanning 3+ lines (e.g. condition
+                // AND condition AND condition) are fully gathered.
+                // (No break here — the next line is still part of this statement.)
                 const contText = nextLine.text.trim();
                 continuationLines.push(contText);
                 lastContinuedLine = contText;
@@ -373,6 +375,9 @@ function parseEvaluateStatement(state: ParserState, headerText: string, leadingT
         } else {
             // Unexpected content — stop at structural boundaries; otherwise skip.
             if (isParagraphName(state, upper) || /^\S+\s+SECTION\.?$/.test(upper)) {
+                // Don't consume trivia — rewind so the outer parser picks it up.
+                // (trivia was already consumed above, so we must put it back here
+                //  as an exception; this path is rare error-recovery.)
                 state.pos -= trivia.length;
                 break;
             }
@@ -465,24 +470,24 @@ function parseReadBlock(state: ParserState, headerText: string, leadingTrivia: T
     }
 
     while (state.pos < state.lines.length && !isAtDivisionHeader(state)) {
-        const trivia = consumeTrivia(state);
-        if (state.pos >= state.lines.length || isAtDivisionHeader(state)) {
-            state.pos -= trivia.length;
-            break;
-        }
+        // Peek ahead to decide whether to stop before consuming trivia
+        const peek = peekPastTrivia(state);
+        if (!peek.nextUpper) break;
 
-        const upper = peekUpperText(state);
-
-        if (upper.startsWith(endTerminator)) {
+        if (peek.nextUpper.startsWith(endTerminator)) {
+            // Consume trivia + the END-xxx line
+            consumeTrivia(state);
             state.pos++;
             break;
         }
 
-        // Stop at structural boundaries — put consumed trivia back for the outer parser
-        if (isParagraphName(state, upper) || /^\S+\s+SECTION\.?$/.test(upper) || upper.startsWith("END DECLARATIVES")) {
-            state.pos -= trivia.length;
+        // Stop at structural boundaries — don't consume trivia
+        if (isParagraphName(state, peek.nextUpper) || /^\S+\s+SECTION\.?$/.test(peek.nextUpper) || peek.nextUpper.startsWith("END DECLARATIVES")) {
             break;
         }
+
+        const trivia = consumeTrivia(state);
+        const upper = peekUpperText(state);
 
         if (upper.startsWith("NOT AT END")) {
             state.pos++;

@@ -3,7 +3,7 @@
  * These divisions have relatively simple structure.
  */
 
-import { type ParserState, consumeTrivia, isAtDivisionHeader, peekUpperText } from "../parser.js";
+import { type ParserState, consumeTrivia, isAtDivisionHeader, peekUpperText, peekPastTrivia } from "../parser.js";
 import {
     type DivisionChild,
     type Section,
@@ -21,13 +21,11 @@ export function parseIdentificationChildren(state: ParserState): DivisionChild[]
     const children: DivisionChild[] = [];
 
     while (state.pos < state.lines.length && !isAtDivisionHeader(state)) {
-        const trivia = consumeTrivia(state);
-        if (state.pos >= state.lines.length || isAtDivisionHeader(state)) {
-            // Put back consumed trivia so the next division captures it as its leadingTrivia
-            state.pos -= trivia.length;
-            break;
-        }
+        // Peek ahead — if EOF or next division, leave trivia for the next division
+        const peek = peekPastTrivia(state);
+        if (!peek.nextUpper || isAtDivisionHeader(state)) break;
 
+        const trivia = consumeTrivia(state);
         const line = state.lines[state.pos];
         const entry: DivisionEntry = {
             kind: "DivisionEntry",
@@ -49,12 +47,11 @@ export function parseEnvironmentChildren(state: ParserState): DivisionChild[] {
     const children: DivisionChild[] = [];
 
     while (state.pos < state.lines.length && !isAtDivisionHeader(state)) {
+        // Peek ahead — if EOF or next division, leave trivia for the next division
+        const peek = peekPastTrivia(state);
+        if (!peek.nextUpper || isAtDivisionHeader(state)) break;
+
         const trivia = consumeTrivia(state);
-        if (state.pos >= state.lines.length || isAtDivisionHeader(state)) {
-            // Put back consumed trivia so the next division captures it as its leadingTrivia
-            state.pos -= trivia.length;
-            break;
-        }
 
         const upper = peekUpperText(state);
 
@@ -117,16 +114,17 @@ function parseEnvironmentSection(state: ParserState, leadingTrivia: import("../t
 
     // Parse section contents until next section, division, or end
     while (state.pos < state.lines.length && !isAtDivisionHeader(state)) {
-        const trivia = consumeTrivia(state);
-        if (state.pos >= state.lines.length || isAtDivisionHeader(state)) break;
+        // Peek ahead to decide whether to stop before consuming trivia
+        const peek = peekPastTrivia(state);
+        if (!peek.nextUpper || isAtDivisionHeader(state)) break;
 
-        const upper = peekUpperText(state);
-        // Stop at next section
-        if (isSectionStart(upper) || upper.startsWith("FILE-CONTROL") || upper.startsWith("SPECIAL-NAMES")) {
-            // Put back trivia by not consuming
-            state.pos -= countTriviaLines(trivia);
+        // Stop at next section — don't consume trivia
+        if (isSectionStart(peek.nextUpper) || peek.nextUpper.startsWith("FILE-CONTROL") || peek.nextUpper.startsWith("SPECIAL-NAMES")) {
             break;
         }
+
+        const trivia = consumeTrivia(state);
+        const upper = peekUpperText(state);
 
         if (upper.startsWith("SELECT")) {
             const line = state.lines[state.pos];
@@ -152,7 +150,7 @@ function parseEnvironmentSection(state: ParserState, leadingTrivia: import("../t
                 kind: "CopyStatement",
                 rawText: line.text.trim(),
                 leadingTrivia: trivia,
-            } as CopyStatement);
+            } satisfies CopyStatement);
             state.pos++;
         } else {
             const line = state.lines[state.pos];
@@ -160,7 +158,7 @@ function parseEnvironmentSection(state: ParserState, leadingTrivia: import("../t
                 kind: "DivisionEntry",
                 rawText: line.text.trim(),
                 leadingTrivia: trivia,
-            } as DivisionEntry);
+            } satisfies DivisionEntry);
             state.pos++;
         }
     }
@@ -190,6 +188,3 @@ function isSectionOrSelectStart(upper: string): boolean {
         upper.startsWith("SPECIAL-NAMES");
 }
 
-function countTriviaLines(trivia: import("../types.js").Trivia[]): number {
-    return trivia.length;
-}

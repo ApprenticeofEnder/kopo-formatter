@@ -22,6 +22,7 @@ export interface SourceFile {
     format: "fixed" | "free";
     children: TopLevelNode[];
     trailingTrivia: Trivia[];
+    diagnostics: Diagnostic[];
 }
 
 // ─── Division ───────────────────────────────────────────────────────────
@@ -209,3 +210,14 @@ export type DivisionChild =
 export type TopLevelNode =
     | Division
     | UnparsedLine;
+
+// ─── Diagnostics ────────────────────────────────────────────────────────
+
+export interface Diagnostic {
+    /** Severity of the diagnostic */
+    severity: "warning" | "info";
+    /** Human-readable message */
+    message: string;
+    /** 1-based line number in the original source */
+    line: number;
+}

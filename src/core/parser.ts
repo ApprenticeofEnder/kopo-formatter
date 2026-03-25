@@ -13,6 +13,7 @@ import {
     type TopLevelNode,
     type Trivia,
     type UnparsedLine,
+    type Diagnostic,
 } from "./types.js";
 import { DIVISION_KEYWORDS } from "./constants.js";
 import { parseDataDivisionChildren } from "./parser/dataDivisionParser.js";
@@ -23,10 +24,11 @@ export interface ParserState {
     lines: SourceLine[];
     pos: number;
     format: SourceFormat;
+    diagnostics: Diagnostic[];
 }
 
 export function parse(lines: SourceLine[], format: SourceFormat): SourceFile {
-    const state: ParserState = { lines, pos: 0, format };
+    const state: ParserState = { lines, pos: 0, format, diagnostics: [] };
     const children: TopLevelNode[] = [];
     const trailingTrivia: Trivia[] = [];
 
@@ -51,6 +53,11 @@ export function parse(lines: SourceLine[], format: SourceFormat): SourceFile {
                 leadingTrivia: triviaBeforeDiv,
             };
             children.push(unparsed);
+            state.diagnostics.push({
+                severity: "warning",
+                message: `Unrecognized line outside any division: "${line.text.trim().substring(0, 40)}"`,
+                line: line.originalLine,
+            });
             state.pos++;
         }
     }
@@ -60,6 +67,7 @@ export function parse(lines: SourceLine[], format: SourceFormat): SourceFile {
         format,
         children,
         trailingTrivia,
+        diagnostics: state.diagnostics,
     };
 }
 
@@ -162,4 +170,39 @@ export function peekUpperText(state: ParserState): string {
     const line = state.lines[state.pos];
     if (line.isComment || line.isBlank) return "";
     return line.text.trim().toUpperCase();
+}
+
+/**
+ * Peek at trivia without consuming it. Returns the trivia items and how many
+ * lines they span, plus the upper-cased text of the first non-trivia line
+ * (empty string if EOF/division boundary).
+ *
+ * Use this instead of consumeTrivia + state.pos -= trivia.length rollback.
+ */
+export function peekPastTrivia(state: ParserState): { triviaCount: number; trivia: import("./types.js").Trivia[]; nextUpper: string } {
+    const trivia: import("./types.js").Trivia[] = [];
+    let pos = state.pos;
+
+    while (pos < state.lines.length) {
+        const line = state.lines[pos];
+        if (line.isBlank) {
+            trivia.push({ kind: "BlankLine", text: "", originalLine: line.originalLine });
+            pos++;
+        } else if (line.isComment) {
+            trivia.push({ kind: "Comment", text: line.text, indicator: line.indicator, originalLine: line.originalLine });
+            pos++;
+        } else {
+            break;
+        }
+    }
+
+    let nextUpper = "";
+    if (pos < state.lines.length) {
+        const line = state.lines[pos];
+        if (!line.isComment && !line.isBlank) {
+            nextUpper = line.text.trim().toUpperCase();
+        }
+    }
+
+    return { triviaCount: trivia.length, trivia, nextUpper };
 }

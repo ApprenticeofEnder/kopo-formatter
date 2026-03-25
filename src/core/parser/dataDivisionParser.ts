@@ -2,7 +2,7 @@
  * Parser for Data Division: builds hierarchical DataEntry trees from level numbers.
  */
 
-import { type ParserState, consumeTrivia, isAtDivisionHeader, peekUpperText } from "../parser.js";
+import { type ParserState, consumeTrivia, isAtDivisionHeader, peekUpperText, peekPastTrivia } from "../parser.js";
 import {
     type DivisionChild,
     type SectionChild,
@@ -39,7 +39,7 @@ export function parseDataDivisionChildren(state: ParserState): DivisionChild[] {
                 kind: "CopyStatement",
                 rawText: line.text.trim(),
                 leadingTrivia: trivia,
-            } as CopyStatement);
+            } satisfies CopyStatement);
             state.pos++;
         } else if (/^\d{2}\s+/.test(upper) || /^\d{2}\s*$/.test(upper)) {
             // Data entry outside a section (shouldn't happen often)
@@ -52,7 +52,7 @@ export function parseDataDivisionChildren(state: ParserState): DivisionChild[] {
                 rawText: line.text.trim(),
                 originalLine: line.originalLine,
                 leadingTrivia: trivia,
-            } as UnparsedLine);
+            } satisfies UnparsedLine);
             state.pos++;
         }
     }
@@ -80,23 +80,17 @@ function parseDataSection(state: ParserState, leadingTrivia: import("../types.js
 
     // Parse entries until next section or division
     while (state.pos < state.lines.length && !isAtDivisionHeader(state)) {
+        // Peek ahead to decide whether to stop before consuming trivia
+        const peek = peekPastTrivia(state);
+        if (!peek.nextUpper || isAtDivisionHeader(state)) break;
+
+        // Stop at next section header or Area A keyword — don't consume trivia
+        if (isDataSectionHeader(peek.nextUpper) || isAreaAKeywordNotData(peek.nextUpper)) {
+            break;
+        }
+
         const trivia = consumeTrivia(state);
-        if (state.pos >= state.lines.length || isAtDivisionHeader(state)) break;
-
         const upper = peekUpperText(state);
-
-        // Stop at next section header
-        if (isDataSectionHeader(upper)) {
-            // Put back position to before trivia
-            state.pos -= trivia.length;
-            break;
-        }
-
-        // Also stop at Area A keywords that indicate a new section/division
-        if (isAreaAKeywordNotData(upper)) {
-            state.pos -= trivia.length;
-            break;
-        }
 
         if (upper.startsWith("FD ") || upper === "FD") {
             const fd = parseFdEntry(state, trivia);
@@ -107,7 +101,7 @@ function parseDataSection(state: ParserState, leadingTrivia: import("../types.js
                 kind: "CopyStatement",
                 rawText: line.text.trim(),
                 leadingTrivia: trivia,
-            } as CopyStatement);
+            } satisfies CopyStatement);
             state.pos++;
         } else if (/^\d{2}\s/.test(upper) || /^\d{2}$/.test(upper)) {
             const entries = parseDataEntries(state, trivia);
@@ -120,7 +114,7 @@ function parseDataSection(state: ParserState, leadingTrivia: import("../types.js
                 rawText: line.text.trim(),
                 originalLine: line.originalLine,
                 leadingTrivia: trivia,
-            } as UnparsedLine);
+            } satisfies UnparsedLine);
             state.pos++;
         }
     }
@@ -157,14 +151,16 @@ function parseFdEntry(state: ParserState, leadingTrivia: import("../types.js").T
 
     // Parse record descriptions under the FD
     while (state.pos < state.lines.length && !isAtDivisionHeader(state)) {
-        const trivia = consumeTrivia(state);
-        if (state.pos >= state.lines.length || isAtDivisionHeader(state)) break;
+        // Peek ahead to decide whether to stop before consuming trivia
+        const peek = peekPastTrivia(state);
+        if (!peek.nextUpper || isAtDivisionHeader(state)) break;
 
-        const upper = peekUpperText(state);
-        if (isDataSectionHeader(upper) || upper.startsWith("FD ") || upper === "FD") {
-            state.pos -= trivia.length;
+        if (isDataSectionHeader(peek.nextUpper) || peek.nextUpper.startsWith("FD ") || peek.nextUpper === "FD") {
             break;
         }
+
+        const trivia = consumeTrivia(state);
+        const upper = peekUpperText(state);
 
         if (/^\d{2}\s/.test(upper) || /^\d{2}$/.test(upper)) {
             const entries = parseDataEntries(state, trivia);
@@ -174,7 +170,6 @@ function parseFdEntry(state: ParserState, leadingTrivia: import("../types.js").T
                 }
             }
         } else {
-            state.pos -= trivia.length;
             break;
         }
     }
@@ -198,23 +193,24 @@ function parseDataEntries(state: ParserState, initialTrivia: import("../types.js
 
     // Parse subsequent entries at the same or deeper level
     while (state.pos < state.lines.length && !isAtDivisionHeader(state)) {
-        const trivia = consumeTrivia(state);
-        if (state.pos >= state.lines.length || isAtDivisionHeader(state)) break;
+        // Peek ahead to decide whether to stop before consuming trivia
+        const peek = peekPastTrivia(state);
+        if (!peek.nextUpper || isAtDivisionHeader(state)) break;
 
-        const upper = peekUpperText(state);
-
-        if (isDataSectionHeader(upper) || upper.startsWith("FD ") || isAreaAKeywordNotData(upper)) {
-            state.pos -= trivia.length;
+        if (isDataSectionHeader(peek.nextUpper) || peek.nextUpper.startsWith("FD ") || isAreaAKeywordNotData(peek.nextUpper)) {
             break;
         }
+
+        if (peek.nextUpper.startsWith("COPY ")) {
+            break;
+        }
+
+        const trivia = consumeTrivia(state);
+        const upper = peekUpperText(state);
 
         if (/^\d{2}\s/.test(upper) || /^\d{2}$/.test(upper)) {
             const entry = parseSingleDataEntry(state, trivia);
             if (entry) allEntries.push(entry);
-        } else if (upper.startsWith("COPY ")) {
-            // COPY inside data - stop collecting data entries
-            state.pos -= trivia.length;
-            break;
         } else {
             // Continuation line or other - just consume
             const line = state.lines[state.pos];

@@ -11,7 +11,7 @@ import { print } from "./printer.js";
 
 export { type FormatterOptions, DEFAULT_OPTIONS, resolveOptions } from "./options.js";
 export { type SourceFormat } from "./formatDetector.js";
-export { type SourceFile } from "./types.js";
+export { type SourceFile, type Diagnostic } from "./types.js";
 
 /**
  * Format COBOL source code.
@@ -27,6 +27,23 @@ export function format(source: string, options: Partial<FormatterOptions> = {}):
     const ast = parse(lines, sourceFormat);
     const output = print(ast, resolved);
     return output;
+}
+
+export interface FormatResult {
+    text: string;
+    diagnostics: import("./types.js").Diagnostic[];
+}
+
+/**
+ * Format COBOL source code and return diagnostics alongside the result.
+ */
+export function formatWithDiagnostics(source: string, options: Partial<FormatterOptions> = {}): FormatResult {
+    const resolved = resolveOptions(options);
+    const sourceFormat = detectFormat(source, resolved.sourceFormat);
+    const lines = scan(source, sourceFormat);
+    const ast = parse(lines, sourceFormat);
+    const output = print(ast, resolved);
+    return { text: output, diagnostics: ast.diagnostics };
 }
 
 /**
