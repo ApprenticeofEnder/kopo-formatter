@@ -245,11 +245,11 @@ export function printDataSection(
                 break;
             default:
                 // DivisionEntry, SelectEntry, etc.
-                if ("leadingTrivia" in child) {
-                    lines.push(...printTrivia(child.leadingTrivia as Trivia[], format));
+                if ("leadingTrivia" in child && Array.isArray(child.leadingTrivia)) {
+                    lines.push(...printTrivia(child.leadingTrivia, format));
                 }
-                if ("rawText" in child) {
-                    lines.push(buildLine(format, { areaA: true, content: (child as { rawText: string }).rawText }));
+                if ("rawText" in child && typeof child.rawText === "string") {
+                    lines.push(buildLine(format, { areaA: true, content: child.rawText }));
                 }
                 break;
         }
