@@ -49,5 +49,21 @@ export const DEFAULT_OPTIONS: FormatterOptions = {
 };
 
 export function resolveOptions(partial: Partial<FormatterOptions>): FormatterOptions {
-    return { ...DEFAULT_OPTIONS, ...partial };
+    const resolved = { ...DEFAULT_OPTIONS, ...partial };
+
+    if (!Number.isInteger(resolved.indentationSpaces) || resolved.indentationSpaces < 1) {
+        throw new Error(`indentationSpaces must be a positive integer, got ${resolved.indentationSpaces}`);
+    }
+
+    const validFormats = ["auto", "fixed", "free"] as const;
+    if (!validFormats.includes(resolved.sourceFormat)) {
+        throw new Error(`sourceFormat must be one of ${validFormats.join(", ")}, got "${resolved.sourceFormat}"`);
+    }
+
+    const validCases = ["upper", "lower", "preserve"] as const;
+    if (!validCases.includes(resolved.keywordCase)) {
+        throw new Error(`keywordCase must be one of ${validCases.join(", ")}, got "${resolved.keywordCase}"`);
+    }
+
+    return resolved;
 }
