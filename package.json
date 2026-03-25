@@ -6,7 +6,7 @@
         "url": "https://github.com/Tawga/kopo-formatter"
     },
     "description": "Visual Studio Code extension to format Cobol files",
-    "version": "0.0.1",
+    "version": "0.4.1",
     "engines": {
         "vscode": "^1.102.0"
     },
@@ -17,12 +17,12 @@
         "onLanguage:COBOL",
         "onLanguage:cobol"
     ],
-    "main": "./extension.js",
+    "main": "./dist/extension.js",
     "contributes": {
         "commands": [
             {
                 "command": "kopo-formatter.formatDocument",
-                "title": "Hello Cobol Document"
+                "title": "Format COBOL Document"
             }
         ],
         "configuration": {
@@ -31,12 +31,27 @@
                 "kopo-formatter.indentationSpaces": {
                     "type": "number",
                     "default": 3,
-                    "description": "Number of spaces to use for one level of indentation"
+                    "description": "Fallback indentation spaces when no editor tab size is configured. Normally editor.tabSize is used automatically."
                 },
                 "kopo-formatter.addEmptyLineAfterExit": {
                     "type": "boolean",
                     "default": true,
                     "description": "Insert a blank line after an EXIT statement"
+                },
+                "kopo-formatter.addEmptyLineAfterDivision": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Insert a blank line after each Division ends, before the next Division header"
+                },
+                "kopo-formatter.addEmptyLineAfterSection": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Insert a blank line after each Section ends, before the next Section header"
+                },
+                "kopo-formatter.omitContinuationLines": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Replace the '-' continuation indicator in column 7 with a space, so wrapped lines look like normal indented lines"
                 },
                 "kopo-formatter.evaluateIndentWhen": {
                     "type": "boolean",
@@ -47,6 +62,51 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Align PIC and VALUE clauses in the Data Division to a consistent column"
+                },
+                "kopo-formatter.sourceFormat": {
+                    "type": "string",
+                    "default": "auto",
+                    "enum": [
+                        "auto",
+                        "fixed",
+                        "free"
+                    ],
+                    "description": "COBOL source format: auto-detect, fixed-form, or free-form"
+                },
+                "kopo-formatter.keywordCase": {
+                    "type": "string",
+                    "default": "preserve",
+                    "enum": [
+                        "preserve",
+                        "upper",
+                        "lower"
+                    ],
+                    "enumDescriptions": [
+                        "Do not change keyword casing",
+                        "Transform all COBOL reserved words to UPPERCASE",
+                        "Transform all COBOL reserved words to lowercase"
+                    ],
+                    "description": "Normalize the case of COBOL reserved words"
+                },
+                "kopo-formatter.normalizeWhitespace": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Collapse multiple consecutive spaces into one within procedure division statements"
+                },
+                "kopo-formatter.wrapLongLines": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Wrap lines that exceed column 72 using fixed-form continuation markers (only applies to fixed-form source)"
+                },
+                "kopo-formatter.uppercaseProcedureNames": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Convert section and paragraph names to uppercase"
+                },
+                "kopo-formatter.alignDelimitedBy": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Align data names and DELIMITED BY clauses in STRING/UNSTRING statements so they start at consistent columns"
                 }
             }
         },
@@ -59,20 +119,19 @@
         ]
     },
     "scripts": {
-        "lint": "eslint .",
-        "pretest": "npm run lint",
-        "test": "vscode-test",
-        "build": "vsce package --out build"
+        "compile": "tsc -p .",
+        "bundle": "node esbuild.mjs",
+        "watch": "tsc -w -p .",
+        "build": "npm run compile && npm run bundle",
+        "package": "npm run build && node -e \"require('child_process').execSync('vsce package --out packages/kopo-formatter-v'+require('./package.json').version+'.vsix',{stdio:'inherit'})\"",
+        "test": "vitest run",
+        "test:watch": "vitest"
     },
     "devDependencies": {
-        "@types/mocha": "^10.0.10",
         "@types/node": "20.x",
         "@types/vscode": "^1.102.0",
-        "@vscode/test-cli": "^0.0.11",
-        "@vscode/test-electron": "^2.5.2",
-        "eslint": "^9.25.1"
-    },
-    "dependencies": {
-        "iconv-lite": "^0.6.3"
+        "esbuild": "^0.25.0",
+        "typescript": "^5.7.0",
+        "vitest": "^3.0.0"
     }
 }

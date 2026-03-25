@@ -2,3 +2,7 @@ node_modules
 .vscode-test/
 *.vsix
 .env
+dist
+test_material
+test/test_output/
+packages
