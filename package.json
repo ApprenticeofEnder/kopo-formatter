@@ -123,7 +123,7 @@
         "bundle": "node esbuild.mjs",
         "watch": "tsc -w -p .",
         "build": "npm run compile && npm run bundle",
-        "package": "npm run build && vsce package --out build",
+        "package": "npm run build && node -e \"require('child_process').execSync('vsce package --out packages/kopo-formatter-v'+require('./package.json').version+'.vsix',{stdio:'inherit'})\"",
         "test": "vitest run",
         "test:watch": "vitest"
     },
