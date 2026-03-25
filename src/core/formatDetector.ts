@@ -27,14 +27,15 @@ export function detectFormat(source: string, override?: "auto" | "fixed" | "free
         }
     }
 
-    // Heuristic: check first N non-blank lines
+    // Heuristic: check first N non-blank lines (50 for better accuracy on
+    // files whose early lines are ambiguous)
     let fixedScore = 0;
     let freeScore = 0;
     let checked = 0;
 
     for (const line of lines) {
         if (!line.trim()) continue;
-        if (checked >= 20) break;
+        if (checked >= 50) break;
         checked++;
 
         // Fixed-form indicators:
@@ -54,6 +55,11 @@ export function detectFormat(source: string, override?: "auto" | "fixed" | "free
                 if (" */-dD".includes(indicator)) {
                     fixedScore++;
                 }
+            }
+            // Penalize fixed-form score if cols 1-6 look numeric but col 7
+            // has unexpected content (suggests data, not a sequence area)
+            if (/^\d{6}$/.test(seqArea) && !" */-dD".includes(indicator)) {
+                freeScore++;
             }
         }
 
