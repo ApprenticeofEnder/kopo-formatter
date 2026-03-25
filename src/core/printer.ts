@@ -36,24 +36,38 @@ const FIXED_MAX_COL = 72;
 const FIXED_PREFIX_LEN = 7; // 6 seq area chars + 1 indicator char
 const FIXED_CONTENT_MAX = FIXED_MAX_COL - FIXED_PREFIX_LEN; // 65 chars
 
+/** Multi-word COBOL verbs that should not be split across lines. */
+const MULTI_WORD_VERBS = ["XML GENERATE", "XML PARSE", "JSON GENERATE", "JSON PARSE", "GO TO"];
+
 /**
  * Compute how many spaces to place after the "      -" continuation marker.
  *
  * For data entries that begin with a COBOL level number (all digits, e.g. "01", "05"),
  * the continuation aligns with the *second* token (the data name), not the level
  * number itself — so "EXCEPTION-VALUE" lines up with "PUSH-BUTTON".
- * For procedure statements the continuation aligns with the *first* token (the verb).
+ * For multi-word verbs (XML GENERATE, JSON PARSE, GO TO), the continuation aligns
+ * after the full verb phrase, not after the first word.
+ * For single-word procedure verbs, the continuation aligns with the first token.
  * Minimum is 3 spaces after the dash.
  */
 function findContinuationIndent(content: string): number {
-    const m = content.match(/^(\s*)(\S+)(\s+)\S/);
+    const m = content.match(/^(\s*)(\S+)(\s+)(\S+)/);
     if (m) {
-        const [, leading, first, gap] = m;
+        const [, leading, first, gap, second] = m;
         if (/^\d+$/.test(first)) {
             // Level number: align with the data name that follows it
             return leading.length + first.length + gap.length;
         }
-        // Procedure verb or other: align with the first token
+        // Check for multi-word verbs — align after the full verb phrase
+        const twoWordVerb = (first + " " + second).toUpperCase();
+        if (MULTI_WORD_VERBS.some(v => twoWordVerb.startsWith(v))) {
+            const verbEnd = leading.length + first.length + gap.length + second.length;
+            // Find next space after the second word to align with the argument
+            const afterVerb = content.substring(verbEnd);
+            const nextGap = afterVerb.match(/^(\s+)/);
+            return Math.max(3, verbEnd + (nextGap ? nextGap[1].length : 1));
+        }
+        // Single-word verb: align with the first token
         return Math.max(3, leading.length);
     }
     const firstPos = content.search(/\S/);
@@ -84,7 +98,12 @@ function wrapFixedLine(line: string, useDash: boolean = true): string[] {
     const content = line.substring(FIXED_PREFIX_LEN);
     const continuationSpaces = findContinuationIndent(content);
     const contIndicator = useDash ? "-" : " ";
-    const contPfx = "      " + contIndicator + " ".repeat(continuationSpaces);
+    // Guard: if the computed continuation indent is too wide to fit any content,
+    // fall back to the minimum 3-space indent after the indicator.
+    const effectiveSpaces = (FIXED_PREFIX_LEN + continuationSpaces) >= (FIXED_MAX_COL - 1)
+        ? 3
+        : continuationSpaces;
+    const contPfx = "      " + contIndicator + " ".repeat(effectiveSpaces);
     const contMax = FIXED_MAX_COL - contPfx.length;
 
     const splitAt = findSplitPoint(content, FIXED_CONTENT_MAX);
@@ -106,6 +125,7 @@ function wrapFixedLine(line: string, useDash: boolean = true): string[] {
  * Find the last space in `text` at or before `maxLen` that is not inside a string literal.
  * Prefers a split point whose next token is NOT a string literal (so quoted values
  * don't end up alone on a continuation line). Falls back to any space if needed.
+ * Avoids splitting level numbers from their data names (e.g. "05 MY-FIELD").
  * Returns -1 if no safe split point found.
  */
 function findSplitPoint(text: string, maxLen: number): number {
@@ -114,6 +134,23 @@ function findSplitPoint(text: string, maxLen: number): number {
     let lastSpace = -1;       // any valid space
     let lastSafeSpace = -1;   // space whose successor is not a quote
 
+    // Determine the minimum split position: don't split between a level number
+    // and its data name (e.g. "05 MY-FIELD" should not become "05\n MY-FIELD").
+    let minSplit = 0;
+    const levelMatch = text.match(/^(\s*\d{2}\s+\S+)/);
+    if (levelMatch) {
+        minSplit = levelMatch[1].length;
+    }
+    // Also protect multi-word verbs from being split
+    const trimmedUpper = text.trimStart().toUpperCase();
+    const leadingSpaces = text.length - text.trimStart().length;
+    for (const verb of MULTI_WORD_VERBS) {
+        if (trimmedUpper.startsWith(verb)) {
+            minSplit = Math.max(minSplit, leadingSpaces + verb.length);
+            break;
+        }
+    }
+
     for (let i = 0; i < Math.min(text.length, maxLen); i++) {
         const ch = text[i];
         if (!inString && (ch === '"' || ch === "'")) {
@@ -121,7 +158,7 @@ function findSplitPoint(text: string, maxLen: number): number {
             quoteChar = ch;
         } else if (inString && ch === quoteChar) {
             inString = false;
-        } else if (!inString && ch === " ") {
+        } else if (!inString && ch === " " && i >= minSplit) {
             lastSpace = i;
             const next = text[i + 1];
             if (next !== '"' && next !== "'") {
